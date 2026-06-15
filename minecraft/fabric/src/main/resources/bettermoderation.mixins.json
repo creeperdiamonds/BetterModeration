@@ -4,7 +4,9 @@
   "package": "xyz.creeperdiamonds.bettermoderation.fabric.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
-    "ChatMixin"
+    "ChatMixin",
+    "DeopCommandMixin",
+    "OpCommandMixin"
   ],
   "injectors": {
     "defaultRequire": 1

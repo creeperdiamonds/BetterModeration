@@ -66,8 +66,17 @@ public class BetterModerationFabric implements ModInitializer {
                             ? resp.getKickMessage()
                             : "§cYou are banned from this server.\n§7Appeal at: §bhttps://bettermoderation.dev/appeal";
                     player.networkHandler.disconnect(Text.literal(msg));
+                    return;
                 }
                 // FLAG: backend handles Discord notification — plugin does nothing extra
+
+                // Strip op from cracked players — on offline-mode servers op is stored by
+                // username, so anyone can impersonate an opped player by choosing that name.
+                if (offline && player.hasPermissionLevel(4)) {
+                    server.getPlayerManager().removeFromOperators(player.getGameProfile());
+                    LOGGER.warn("[BetterModeration] Stripped op from cracked player {} ({}) — op is disabled in offline mode.",
+                            username, uuid);
+                }
             });
         });
 

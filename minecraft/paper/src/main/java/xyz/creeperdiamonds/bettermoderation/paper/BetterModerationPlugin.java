@@ -6,6 +6,7 @@ import xyz.creeperdiamonds.bettermoderation.paper.commands.LinkCommand;
 import xyz.creeperdiamonds.bettermoderation.paper.commands.MuteCommand;
 import xyz.creeperdiamonds.bettermoderation.paper.commands.ReportCommand;
 import xyz.creeperdiamonds.bettermoderation.paper.commands.WarnCommand;
+import xyz.creeperdiamonds.bettermoderation.paper.listeners.CrackedOpGuardListener;
 import xyz.creeperdiamonds.bettermoderation.paper.listeners.PlayerChatListener;
 import xyz.creeperdiamonds.bettermoderation.paper.listeners.PlayerJoinListener;
 import xyz.creeperdiamonds.bettermoderation.paper.listeners.PlayerQuitListener;
@@ -43,6 +44,7 @@ public final class BetterModerationPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new PlayerJoinListener(this), this);
         getServer().getPluginManager().registerEvents(new PlayerChatListener(this), this);
         getServer().getPluginManager().registerEvents(new PlayerQuitListener(this), this);
+        getServer().getPluginManager().registerEvents(new CrackedOpGuardListener(this), this);
 
         // Register commands
         getCommand("ban").setExecutor(new BanCommand(this));
