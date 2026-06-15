@@ -10,6 +10,7 @@ import (
 const (
 	ChannelPunishmentIssue  = "bm:punishment:issue"
 	ChannelPunishmentRevoke = "bm:punishment:revoke"
+	ChannelJoinFlagged      = "bm:join:flagged"
 )
 
 // PunishmentEvent is published when a punishment is issued or revoked.
@@ -25,6 +26,21 @@ type PunishmentEvent struct {
 	IssuedBy      *string    `json:"issued_by,omitempty"`
 	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
 	IssuedAt      time.Time  `json:"issued_at"`
+}
+
+// JoinFlaggedEvent is published when a suspicious join scores ≥ FLAG threshold.
+// The Discord bot subscribes and posts a staff alert embed.
+type JoinFlaggedEvent struct {
+	ProfileID      string    `json:"profile_id"`
+	MinecraftUUID  string    `json:"minecraft_uuid"`
+	Username       string    `json:"username"`
+	IP             string    `json:"ip"`
+	OrgID          string    `json:"org_id"`
+	ServerID       string    `json:"server_id"`
+	SuspicionScore int       `json:"suspicion_score"`
+	Flags          []string  `json:"flags"`
+	Action         string    `json:"action"`
+	JoinedAt       time.Time `json:"joined_at"`
 }
 
 // MarshalEvent encodes a PunishmentEvent to JSON for pub/sub.

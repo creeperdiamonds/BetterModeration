@@ -145,6 +145,22 @@ func (s *Service) FindAlts(ctx context.Context, profileID string) ([]string, err
 	return ids, rows.Err()
 }
 
+// GuildIDForOrg returns the Discord guild ID for the given org.
+func (s *Service) GuildIDForOrg(ctx context.Context, orgID string) (string, error) {
+	var guildID string
+	err := s.db.QueryRowxContext(ctx,
+		`SELECT platform_id FROM servers WHERE org_id = ? AND platform = 'DISCORD' LIMIT 1`,
+		orgID,
+	).Scan(&guildID)
+	if err == sql.ErrNoRows {
+		return "", fmt.Errorf("no discord server for org %s", orgID)
+	}
+	if err != nil {
+		return "", fmt.Errorf("guild lookup: %w", err)
+	}
+	return guildID, nil
+}
+
 // GetByID returns a profile by its internal UUID.
 func (s *Service) GetByID(ctx context.Context, id string) (*Profile, error) {
 	var p Profile

@@ -33,11 +33,19 @@ type WarnResult struct {
 }
 
 type Service struct {
-	db *sqlx.DB
+	db          *sqlx.DB
+	onBanIssued func(profileID, orgID string)
 }
 
 func NewService(db *sqlx.DB) *Service {
 	return &Service{db: db}
+}
+
+// SetBanHook registers a callback that is called asynchronously after any BAN
+// punishment is persisted. Used to pre-compute offline UUIDs without creating
+// a circular import between warn and evasion packages.
+func (s *Service) SetBanHook(fn func(profileID, orgID string)) {
+	s.onBanIssued = fn
 }
 
 // Issue writes a WARN punishment, counts active warns, checks thresholds,
@@ -124,6 +132,9 @@ func (s *Service) IssueDirect(ctx context.Context, orgID, profileID, issuedBy, p
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert punishment: %w", err)
+	}
+	if punishType == "BAN" && s.onBanIssued != nil {
+		go s.onBanIssued(profileID, orgID)
 	}
 	return &PunishmentRecord{
 		ID:              id,
@@ -298,6 +309,10 @@ func (s *Service) issueAutoPunishment(ctx context.Context, tx *sqlx.Tx, orgID, p
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if t.ActionType == "BAN" && s.onBanIssued != nil {
+		go s.onBanIssued(profileID, orgID)
 	}
 
 	return &Punishment{

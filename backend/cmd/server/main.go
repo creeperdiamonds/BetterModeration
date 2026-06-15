@@ -17,6 +17,7 @@ import (
 	"creeperdiamonds.xyz/bettermoderation/internal/bot"
 	"creeperdiamonds.xyz/bettermoderation/internal/cache"
 	"creeperdiamonds.xyz/bettermoderation/internal/db"
+	"creeperdiamonds.xyz/bettermoderation/internal/evasion"
 	"creeperdiamonds.xyz/bettermoderation/internal/expiry"
 	"creeperdiamonds.xyz/bettermoderation/internal/linking"
 	"creeperdiamonds.xyz/bettermoderation/internal/permission"
@@ -79,6 +80,16 @@ func main() {
 	permLoader := permission.NewLoader(database.Conn, redisCache.Client())
 	eventBus := bmsync.NewEventBus(redisCache.Client())
 	autoModEngine := automod.NewEngine(database.Conn, redisCache.Client())
+	evasionSvc := evasion.NewService(database.Conn, eventBus)
+
+	// Register ban hook: pre-compute offline UUIDs after any BAN is persisted
+	warnSvc.SetBanHook(func(profileID, orgID string) {
+		hookCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := evasionSvc.ComputeAndStoreBannedOfflineUUIDs(hookCtx, profileID, orgID); err != nil {
+			log.Printf("[evasion] failed to pre-compute offline UUIDs for profile %s: %v", profileID, err)
+		}
+	})
 
 	// Initialize Discord bot
 	discordBot, err := bot.New(discordToken, warnSvc, profileSvc, permLoader, eventBus, autoModEngine, appealsSvc, reportsSvc, database.Conn)
@@ -102,7 +113,7 @@ func main() {
 	oauthMgr := auth.NewManagerFromEnv()
 
 	// Set up HTTP router
-	router := api.NewRouter(profileSvc, warnSvc, linkingSvc, appealsSvc, reportsSvc, webhookDisp, eventBus, oauthMgr, autoModEngine, permLoader, redisCache.Client(), database.Conn)
+	router := api.NewRouter(profileSvc, warnSvc, linkingSvc, appealsSvc, reportsSvc, webhookDisp, eventBus, oauthMgr, autoModEngine, permLoader, evasionSvc, redisCache.Client(), database.Conn)
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%s", port),
 		Handler:      router,

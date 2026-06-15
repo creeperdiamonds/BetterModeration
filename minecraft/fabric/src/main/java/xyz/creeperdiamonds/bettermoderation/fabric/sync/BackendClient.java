@@ -2,6 +2,7 @@ package xyz.creeperdiamonds.bettermoderation.fabric.sync;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import xyz.creeperdiamonds.bettermoderation.core.domain.ConnectResponse;
 import xyz.creeperdiamonds.bettermoderation.core.domain.Punishment;
 
 import java.net.URI;
@@ -105,6 +106,41 @@ public class BackendClient {
                         return false;
                     }
                 });
+    }
+
+    /**
+     * Unified join endpoint: tracks the player, scores evasion signals, and returns
+     * the recommended action (ALLOW / FLAG / DENY) plus a kick message if denied.
+     * Returns null on non-200 or network error (caller should fail-open).
+     */
+    public CompletableFuture<ConnectResponse> sessionConnect(
+            String uuid, String username, String ip, boolean offlineMode) {
+        try {
+            String body = mapper.writeValueAsString(new java.util.HashMap<>() {{
+                put("uuid", uuid);
+                put("username", username);
+                put("ip", ip != null ? ip : "");
+                put("offline_mode", offlineMode);
+            }});
+
+            HttpRequest request = baseRequest("/v1/sessions/connect")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .header("Content-Type", "application/json")
+                    .build();
+
+            return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                    .thenApply(response -> {
+                        if (response.statusCode() != 200) return null;
+                        try {
+                            return mapper.readValue(response.body(), ConnectResponse.class);
+                        } catch (Exception e) {
+                            return null;
+                        }
+                    })
+                    .exceptionally(e -> null);
+        } catch (Exception e) {
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     private HttpRequest.Builder baseRequest(String path) {

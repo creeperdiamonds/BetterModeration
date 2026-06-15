@@ -1,30 +1,22 @@
 package xyz.creeperdiamonds.bettermoderation.fabric;
 
-import xyz.creeperdiamonds.bettermoderation.core.domain.Punishment;
-import xyz.creeperdiamonds.bettermoderation.core.domain.PunishmentType;
+import xyz.creeperdiamonds.bettermoderation.core.domain.ConnectResponse;
 import xyz.creeperdiamonds.bettermoderation.fabric.sync.BackendClient;
 import xyz.creeperdiamonds.bettermoderation.fabric.sync.EventStreamClient;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
-import net.minecraft.network.packet.s2c.play.DisconnectS2CPacket;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 public class BetterModerationFabric implements ModInitializer {
 
     public static final String MOD_ID = "bettermoderation";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
-
-    private static final DateTimeFormatter DATE_FORMAT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneId.of("UTC"));
 
     private static BetterModerationFabric instance;
     private BackendClient backendClient;
@@ -35,75 +27,50 @@ public class BetterModerationFabric implements ModInitializer {
     public void onInitialize() {
         instance = this;
 
-        // Read configuration from environment variables (or fall back to defaults)
         String backendUrl = getEnvOrDefault("BM_BACKEND_URL", "http://localhost:8080");
         String serverId   = getEnvOrDefault("BM_SERVER_ID", "fabric-server");
         String apiKey     = getEnvOrDefault("BM_API_KEY", "");
 
         backendClient = new BackendClient(backendUrl, serverId, apiKey);
 
-        // Start SSE event stream for real-time punishment enforcement
         eventStreamClient = new EventStreamClient(LOGGER, backendUrl, serverId, apiKey);
         eventStreamThread = new Thread(eventStreamClient, "bm-event-stream");
         eventStreamThread.setDaemon(true);
         eventStreamThread.start();
 
-        // Enforce bans + alt detection on player join
+        // Enforce bans and evasion detection on player join
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayerEntity player = handler.player;
             String uuid = player.getUuid().toString();
+            String username = player.getName().getString();
 
             String ip = (player.networkHandler.connection.getAddress() instanceof java.net.InetSocketAddress isa)
                     ? isa.getAddress().getHostAddress()
                     : null;
+            boolean offline = !server.isOnlineMode();
 
             server.execute(() -> {
-                // Check direct ban and IP ban (backend also tracks the IP)
-                List<Punishment> punishments;
+                ConnectResponse resp;
                 try {
-                    punishments = backendClient.getActivePunishments(uuid, ip)
-                            .get(4, java.util.concurrent.TimeUnit.SECONDS);
+                    resp = backendClient.sessionConnect(uuid, username, ip, offline)
+                            .get(5, TimeUnit.SECONDS);
                 } catch (Exception e) {
-                    LOGGER.warn("Could not fetch punishments for {}: {}", uuid, e.getMessage());
-                    punishments = null;
+                    LOGGER.warn("[BetterModeration] sessionConnect timed out for {}: {}", uuid, e.getMessage());
+                    return; // fail-open
                 }
 
-                if (punishments != null) {
-                    for (Punishment punishment : punishments) {
-                        if (!punishment.isActive() || punishment.isExpired()) continue;
-                        if (punishment.getType() == PunishmentType.BAN) {
-                            String expiry = punishment.getExpiresAt() == null
-                                    ? "permanent"
-                                    : DATE_FORMAT.format(Instant.ofEpochMilli(punishment.getExpiresAt()));
-                            player.networkHandler.disconnect(Text.literal(
-                                    "§cYou are banned from this server.\n"
-                                    + "§7Reason: §f" + punishment.getReason() + "\n"
-                                    + "§7Expires: §f" + expiry + "\n"
-                                    + "§7Appeal at: §bhttps://bettermoderation.dev/appeal"
-                            ));
-                            return;
-                        }
-                    }
-                }
+                if (resp == null) return; // fail-open on error
 
-                // Alt detection
-                try {
-                    boolean altBanned = backendClient.hasAltWithActiveBan(uuid)
-                            .get(3, java.util.concurrent.TimeUnit.SECONDS);
-                    if (altBanned) {
-                        LOGGER.warn("[BetterModeration] Blocking potential ban evasion: {}", uuid);
-                        player.networkHandler.disconnect(Text.literal(
-                                "§cYou are banned from this server (ban evasion).\n"
-                                + "§7Appeal at: §bhttps://bettermoderation.dev/appeal"
-                        ));
-                    }
-                } catch (Exception e) {
-                    LOGGER.warn("Could not check alts for {}: {}", uuid, e.getMessage());
+                if (resp.getAction() == ConnectResponse.Action.DENY) {
+                    String msg = resp.getKickMessage() != null
+                            ? resp.getKickMessage()
+                            : "§cYou are banned from this server.\n§7Appeal at: §bhttps://bettermoderation.dev/appeal";
+                    player.networkHandler.disconnect(Text.literal(msg));
                 }
+                // FLAG: backend handles Discord notification — plugin does nothing extra
             });
         });
 
-        // Register server lifecycle hooks
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             eventStreamClient.setServer(server);
             LOGGER.info("BetterModeration: server started — notifying backend.");
@@ -117,7 +84,7 @@ public class BetterModerationFabric implements ModInitializer {
             LOGGER.info("BetterModeration: server stopping — notifying backend.");
             eventStreamClient.stop();
             try {
-                backendClient.notifyServerStatus(false).get(3, java.util.concurrent.TimeUnit.SECONDS);
+                backendClient.notifyServerStatus(false).get(3, TimeUnit.SECONDS);
             } catch (Exception e) {
                 LOGGER.warn("Failed to notify backend of server stop: {}", e.getMessage());
             }

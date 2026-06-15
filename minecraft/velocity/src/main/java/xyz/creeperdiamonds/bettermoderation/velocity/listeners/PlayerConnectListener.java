@@ -3,27 +3,19 @@ package xyz.creeperdiamonds.bettermoderation.velocity.listeners;
 import com.velocitypowered.api.event.ResultedEvent;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.LoginEvent;
-import xyz.creeperdiamonds.bettermoderation.core.domain.Punishment;
-import xyz.creeperdiamonds.bettermoderation.core.domain.PunishmentType;
+import xyz.creeperdiamonds.bettermoderation.core.domain.ConnectResponse;
 import xyz.creeperdiamonds.bettermoderation.velocity.BetterModerationVelocity;
 import xyz.creeperdiamonds.bettermoderation.velocity.sync.BackendClient;
 import net.kyori.adventure.text.Component;
 
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Checks for active bans on the LoginEvent (post-auth), where the player's UUID is
- * available. Using LoginEvent rather than PreLoginEvent ensures UUID-based lookup
- * works correctly for both online and offline-mode servers.
+ * Checks for bans and evasion signals on LoginEvent (post-auth), where the
+ * player's UUID is available. Uses the unified /v1/sessions/connect endpoint
+ * which combines tracking, scoring, and ban enforcement in one call.
  */
 public class PlayerConnectListener {
-
-    private static final DateTimeFormatter DATE_FORMAT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneId.of("UTC"));
 
     private final BetterModerationVelocity plugin;
     private final BackendClient backendClient;
@@ -36,54 +28,29 @@ public class PlayerConnectListener {
     @Subscribe
     public void onLogin(LoginEvent event) {
         String uuid = event.getPlayer().getUniqueId().toString();
+        String username = event.getPlayer().getUsername();
         String ip = event.getPlayer().getRemoteAddress() != null
                 ? event.getPlayer().getRemoteAddress().getAddress().getHostAddress()
                 : null;
+        boolean offline = !plugin.getServer().getConfiguration().isOnlineMode();
 
-        List<Punishment> punishments;
+        ConnectResponse resp;
         try {
-            punishments = backendClient.getActivePunishments(uuid, ip)
-                    .get(4, TimeUnit.SECONDS);
+            resp = backendClient.sessionConnect(uuid, username, ip, offline)
+                    .get(5, TimeUnit.SECONDS);
         } catch (Exception e) {
-            plugin.getLogger().warn("Could not fetch punishments for {}: {}", uuid, e.getMessage());
-            return;
+            plugin.getLogger().warn("[BetterModeration] sessionConnect timed out for {}: {}", uuid, e.getMessage());
+            return; // fail-open
         }
 
-        if (punishments == null) return;
+        if (resp == null) return; // fail-open on error
 
-        for (Punishment punishment : punishments) {
-            if (!punishment.isActive() || punishment.isExpired()) continue;
-
-            if (punishment.getType() == PunishmentType.BAN) {
-                String expiry = punishment.getExpiresAt() == null
-                        ? "permanent"
-                        : DATE_FORMAT.format(Instant.ofEpochMilli(punishment.getExpiresAt()));
-
-                Component denyMessage = Component.text(
-                        "§cYou are banned from this network.\n"
-                        + "§7Reason: §f" + punishment.getReason() + "\n"
-                        + "§7Expires: §f" + expiry + "\n"
-                        + "§7Appeal at: §bhttps://bettermoderation.dev/appeal"
-                );
-
-                event.setResult(ResultedEvent.ComponentResult.denied(denyMessage));
-                return;
-            }
+        if (resp.getAction() == ConnectResponse.Action.DENY) {
+            String msg = resp.getKickMessage() != null
+                    ? resp.getKickMessage()
+                    : "§cYou are banned from this network.\n§7Appeal at: §bhttps://bettermoderation.dev/appeal";
+            event.setResult(ResultedEvent.ComponentResult.denied(Component.text(msg)));
         }
-
-        // Alt detection: kick ban evaders whose alternate accounts are banned
-        try {
-            boolean altBanned = backendClient.hasAltWithActiveBan(uuid)
-                    .get(3, TimeUnit.SECONDS);
-            if (altBanned) {
-                plugin.getLogger().warn("[BetterModeration] Blocking potential ban evasion: {}", uuid);
-                event.setResult(ResultedEvent.ComponentResult.denied(Component.text(
-                        "§cYou are banned from this network (ban evasion).\n"
-                        + "§7Appeal at: §bhttps://bettermoderation.dev/appeal"
-                )));
-            }
-        } catch (Exception e) {
-            plugin.getLogger().warn("Could not check alts for {}: {}", uuid, e.getMessage());
-        }
+        // FLAG: backend handles Discord notification — plugin does nothing extra
     }
 }

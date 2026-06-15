@@ -17,6 +17,7 @@ import (
 	"creeperdiamonds.xyz/bettermoderation/internal/linking"
 	"creeperdiamonds.xyz/bettermoderation/internal/permission"
 	"creeperdiamonds.xyz/bettermoderation/internal/profile"
+	"creeperdiamonds.xyz/bettermoderation/internal/evasion"
 	"creeperdiamonds.xyz/bettermoderation/internal/reports"
 	bmsync "creeperdiamonds.xyz/bettermoderation/internal/sync"
 	"creeperdiamonds.xyz/bettermoderation/internal/warn"
@@ -34,6 +35,7 @@ type Router struct {
 	oauth    *auth.Manager
 	automod  *automod.Engine
 	perms    *permission.Loader
+	evasion  *evasion.Service
 	rdb      *redis.Client
 	db       *sqlx.DB
 }
@@ -49,6 +51,7 @@ func NewRouter(
 	oauthMgr *auth.Manager,
 	automodEngine *automod.Engine,
 	permLoader *permission.Loader,
+	evasionSvc *evasion.Service,
 	rdb *redis.Client,
 	db *sqlx.DB,
 ) http.Handler {
@@ -63,6 +66,7 @@ func NewRouter(
 		oauth:    oauthMgr,
 		automod:  automodEngine,
 		perms:    permLoader,
+		evasion:  evasionSvc,
 		rdb:      rdb,
 		db:       db,
 	}
@@ -118,6 +122,8 @@ func NewRouter(
 	handle("PUT /v1/servers/{id}/status", http.HandlerFunc(r.handleUpdateServerStatus), serverAuth, pluginRL)
 	handle("POST /v1/players/track-ip", http.HandlerFunc(r.handleTrackIP), serverAuth, pluginRL)
 	handle("GET /v1/events/stream", http.HandlerFunc(r.sseStream), serverAuth)
+	handle("POST /v1/sessions/connect", http.HandlerFunc(r.handleSessionConnect), serverAuth, pluginRL)
+	handle("POST /v1/admin/backfill-offline-uuids", http.HandlerFunc(r.handleBackfillOfflineUUIDs), serverAuth)
 
 	// Appeals
 	handle("POST /v1/appeals", http.HandlerFunc(r.handleSubmitAppeal), submitRL)

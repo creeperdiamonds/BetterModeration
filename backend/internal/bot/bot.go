@@ -2,8 +2,10 @@ package bot
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -72,6 +74,7 @@ func (b *Bot) Start() error {
 	if err := b.Session.Open(); err != nil {
 		return fmt.Errorf("opening discord session: %w", err)
 	}
+	go b.Bus.Subscribe(context.Background(), bmsync.ChannelJoinFlagged, b.onJoinFlagged)
 	return nil
 }
 
@@ -291,6 +294,49 @@ func (b *Bot) onGuildBanAdd(s *discordgo.Session, e *discordgo.GuildBanAdd) {
 
 func (b *Bot) onGuildBanRemove(s *discordgo.Session, e *discordgo.GuildBanRemove) {
 	log.Printf("[event] ban remove — user=%s guild=%s", e.User.ID, e.GuildID)
+}
+
+func (b *Bot) onJoinFlagged(payload string) {
+	var evt bmsync.JoinFlaggedEvent
+	if err := json.Unmarshal([]byte(payload), &evt); err != nil {
+		log.Printf("[evasion] failed to decode JoinFlaggedEvent: %v", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	guildID, err := b.Profiles.GuildIDForOrg(ctx, evt.OrgID)
+	if err != nil {
+		log.Printf("[evasion] GuildIDForOrg(%s): %v", evt.OrgID, err)
+		return
+	}
+
+	logCh := b.logChannels[guildID]
+	if logCh == "" {
+		return
+	}
+
+	actionColor := 0xFEE75C // yellow = FLAG
+	if evt.Action == "DENY" {
+		actionColor = 0xED4245 // red = DENY
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title: fmt.Sprintf("⚠️ Suspicious Join (%s)", evt.Action),
+		Description: fmt.Sprintf(
+			"**Username:** `%s`\n**UUID:** `%s`\n**IP:** `%s`\n**Score:** %d\n**Flags:** %s",
+			evt.Username, evt.MinecraftUUID, evt.IP, evt.SuspicionScore,
+			strings.Join(evt.Flags, ", "),
+		),
+		Color:     actionColor,
+		Footer:    &discordgo.MessageEmbedFooter{Text: "BetterModeration Evasion Detection"},
+		Timestamp: evt.JoinedAt.Format(time.RFC3339),
+	}
+
+	if _, err := b.Session.ChannelMessageSendEmbed(logCh, embed); err != nil {
+		log.Printf("[evasion] failed to send flagged join embed: %v", err)
+	}
 }
 
 func (b *Bot) syncCommands(s *discordgo.Session) {
