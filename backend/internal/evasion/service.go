@@ -226,11 +226,15 @@ func (s *Service) assembleSignals(ctx context.Context, req ConnectRequest, profi
 	// Offline UUID pre-computation match
 	sig.OfflineUUIDMatch = s.offlineUUIDBanned(ctx, req.UUID, req.OrgID)
 
-	// Username signals (in-process Levenshtein against banned username set)
-	bannedUsernames, _ := s.getBannedUsernames(ctx, req.OrgID)
-	if len(bannedUsernames) > 0 && req.Username != "" {
-		sig.UsernameExact, sig.UsernameLevenshtein, sig.UsernamePrefix =
-			s.usernameSignals(ctx, req.Username, profileID, req.OrgID, bannedUsernames)
+	// Username signals only apply on offline-mode servers. On online-mode servers the
+	// Mojang-authenticated UUID is authoritative — a premium player sharing a name with
+	// a banned cracked player is not the same person and must not be penalised.
+	if req.OfflineMode {
+		bannedUsernames, _ := s.getBannedUsernames(ctx, req.OrgID)
+		if len(bannedUsernames) > 0 && req.Username != "" {
+			sig.UsernameExact, sig.UsernameLevenshtein, sig.UsernamePrefix =
+				s.usernameSignals(ctx, req.Username, profileID, req.OrgID, bannedUsernames)
+		}
 	}
 
 	// /24 subnet match (IPv4 only)
