@@ -1,0 +1,64 @@
+# =====================
+# Go
+# =====================
+backend/bin/
+backend/*.exe
+backend/*.dll
+backend/*.so
+backend/*.dylib
+backend/vendor/
+
+# Go test cache and build cache
+**/__debug_bin
+.cache/go-build/
+
+# =====================
+# Node / SvelteKit
+# =====================
+web/node_modules/
+web/.svelte-kit/
+web/build/
+web/.env
+web/.env.*
+web/!.env.example
+
+# =====================
+# Maven (Java)
+# =====================
+minecraft/*/target/
+minecraft/**/target/
+
+# =====================
+# Gradle (Fabric)
+# =====================
+minecraft/fabric/.gradle/
+minecraft/fabric/build/
+minecraft/fabric/run/
+minecraft/fabric/.loom-cache/
+
+# =====================
+# IDE and editor
+# =====================
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.code-workspace
+
+# =====================
+# OS
+# =====================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =====================
+# Environment / secrets
+# =====================
+.env
+.env.*
+!.env.example
+*.env
+secrets.yaml
+secrets.json

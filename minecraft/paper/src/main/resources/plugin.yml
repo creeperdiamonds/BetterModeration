@@ -1,0 +1,41 @@
+name: BetterModeration
+version: 1.0.0
+main: xyz.creeperdiamonds.bettermoderation.paper.BetterModerationPlugin
+api-version: '1.21'
+description: Smart cross-platform moderation for Discord and Minecraft
+commands:
+  ban:
+    description: Ban a player
+    usage: /ban <player> [duration] [reason]
+    permission: bettermoderation.ban
+  mute:
+    description: Mute a player
+    usage: /mute <player> [duration] [reason]
+    permission: bettermoderation.mute
+  kick:
+    description: Kick a player
+    usage: /kick <player> [reason]
+    permission: bettermoderation.kick
+  warn:
+    description: Warn a player
+    usage: /warn <player> <reason>
+    permission: bettermoderation.warn
+  link:
+    description: Link your Minecraft account to BetterModeration
+    usage: /link
+  report:
+    description: Report a player
+    usage: /report <player> <reason>
+permissions:
+  bettermoderation.ban:
+    description: Allows banning players
+    default: op
+  bettermoderation.mute:
+    description: Allows muting players
+    default: op
+  bettermoderation.kick:
+    description: Allows kicking players
+    default: op
+  bettermoderation.warn:
+    description: Allows warning players
+    default: op

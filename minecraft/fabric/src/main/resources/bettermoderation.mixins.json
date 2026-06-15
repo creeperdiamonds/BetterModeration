@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "xyz.creeperdiamonds.bettermoderation.fabric.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "ChatMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

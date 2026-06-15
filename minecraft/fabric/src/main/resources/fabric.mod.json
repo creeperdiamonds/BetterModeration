@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "bettermoderation",
+  "version": "${version}",
+  "name": "BetterModeration",
+  "description": "Smart cross-platform moderation for Discord and Minecraft",
+  "authors": ["creeper_diamonds"],
+  "license": "MIT",
+  "environment": "server",
+  "entrypoints": {
+    "main": ["xyz.creeperdiamonds.bettermoderation.fabric.BetterModerationFabric"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.9",
+    "fabric-api": "*",
+    "minecraft": "~1.21.4"
+  }
+}
